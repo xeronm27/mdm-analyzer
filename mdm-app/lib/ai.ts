@@ -128,15 +128,12 @@ export function deterministicNarrative(s: SellerFacts): Narrative {
   };
 }
 
-// ---- AI narrative (with guardrail + fallback) ------------------------------
+// ---- AI narrative via Gemini Flash (free tier, no extra package needed) ----
 export async function interpret(s: SellerFacts): Promise<Narrative> {
-  const key = process.env.ANTHROPIC_API_KEY;
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return deterministicNarrative(s);
 
   try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey: key });
-
     const factsForModel = JSON.stringify(
       {
         store: s.store,
@@ -176,16 +173,27 @@ ${factsForModel}
 
 Respond as JSON: {"en": "...", "ar": "..."}`;
 
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.3 },
+        }),
+      }
+    );
 
-    const text = msg.content
-      .map((c) => (c.type === "text" ? c.text : ""))
-      .join("");
-    const parsed = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+    if (!res.ok) throw new Error(`Gemini error: ${res.status}`);
+
+    const json = await res.json();
+    const text: string =
+      json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    const parsed = JSON.parse(
+      text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)
+    );
 
     const allowed = allowedNumbers(s);
     const gEn = runGuardrail(parsed.en ?? "", allowed);
@@ -193,12 +201,8 @@ Respond as JSON: {"en": "...", "ar": "..."}`;
     const violations = [...gEn.violations, ...gAr.violations];
 
     if (violations.length > 0) {
-      // AI tried to use a number not in the facts -> reject, fall back
       const det = deterministicNarrative(s);
-      det.guardrail = {
-        checked: gEn.checked + gAr.checked,
-        violations,
-      };
+      det.guardrail = { checked: gEn.checked + gAr.checked, violations };
       return det;
     }
 
