@@ -19,11 +19,45 @@ interface ReasonDef {
 }
 
 export const REASON_MAP: Record<string, ReasonDef> = {
+
+  // ── ADS (bad-quality traffic / misleading creatives) ─────────────────────
   "the-client-did-not-place-the-order": {
     owner: "ads",
     labelEn: "Fake / unintended lead (client never ordered)",
     labelAr: "طلب وهمي (العميل لم يطلب فعلاً)",
   },
+  "the-phone-number-is-wrong": {
+    owner: "ads",
+    labelEn: "Wrong phone number (bad lead data)",
+    labelAr: "رقم هاتف خاطئ (بيانات إعلان رديئة)",
+  },
+  "false-order": {
+    owner: "ads",
+    labelEn: "False order",
+    labelAr: "طلب مزيف",
+  },
+  "fake-order": {
+    owner: "ads",
+    labelEn: "Fake order",
+    labelAr: "طلب وهمي",
+  },
+  "order-pass-by-child": {
+    owner: "ads",
+    labelEn: "Order placed by child",
+    labelAr: "الطلب قدّمه طفل",
+  },
+  "african-bad-lead": {
+    owner: "ads",
+    labelEn: "African bad lead (out-of-market traffic)",
+    labelAr: "طلب من خارج السوق المستهدف",
+  },
+  "delivery-mentioned-free": {
+    owner: "ads",
+    labelEn: "Ad mentioned free delivery (misleading)",
+    labelAr: "الإعلان ذكر توصيل مجاني (مضلِّل)",
+  },
+
+  // ── US / CALL CENTER (reachability & operations failures) ─────────────────
   "the-client-does-not-respond": {
     owner: "us",
     labelEn: "Client does not respond",
@@ -34,6 +68,73 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     labelEn: "Client unreachable",
     labelAr: "تعذر الوصول إلى العميل",
   },
+  "the-client-is-not-available": {
+    owner: "us",
+    labelEn: "Client not available (should retry)",
+    labelAr: "العميل غير متاح (يجب إعادة المحاولة)",
+  },
+  "the-client-is-on-the-move": {
+    owner: "us",
+    labelEn: "Client on the move (should retry later)",
+    labelAr: "العميل في تنقل (يجب المتابعة لاحقاً)",
+  },
+  "after-3-days-of-calls": {
+    owner: "us",
+    labelEn: "Gave up after 3 days of calls",
+    labelAr: "توقف بعد 3 أيام من المحاولات",
+  },
+  "line-is-busy": {
+    owner: "us",
+    labelEn: "Line busy (should retry)",
+    labelAr: "الخط مشغول (يجب إعادة المحاولة)",
+  },
+  "the-responsible-set-it-by-force": {
+    owner: "us",
+    labelEn: "Force-cancelled by agent",
+    labelAr: "ألغاه المسؤول قسراً",
+  },
+  "the-wilaya-is-not-deliverable": {
+    owner: "us",
+    labelEn: "Wilaya not covered by delivery",
+    labelAr: "الولاية غير مشمولة بالتوصيل",
+  },
+  "the-state-is-not-deliverable": {
+    owner: "us",
+    labelEn: "State not covered by delivery",
+    labelAr: "المنطقة غير مشمولة بالتوصيل",
+  },
+  "shipping-fees-too-high": {
+    owner: "us",
+    labelEn: "Shipping fees too high",
+    labelAr: "رسوم الشحن مرتفعة جداً",
+  },
+  "need-more-info-about-the-product": {
+    owner: "us",
+    labelEn: "Agent couldn't answer product questions",
+    labelAr: "المسؤول لم يستطع الإجابة عن أسئلة المنتج",
+  },
+  "automatic": {
+    owner: "us",
+    labelEn: "Auto-cancelled by platform",
+    labelAr: "ألغي تلقائياً من المنصة",
+  },
+  "automatic-configuration": {
+    owner: "us",
+    labelEn: "Auto-cancelled (configuration rule)",
+    labelAr: "ألغي تلقائياً (قاعدة إعداد)",
+  },
+  "automatic-bad-words": {
+    owner: "us",
+    labelEn: "Auto-cancelled (bad words detected)",
+    labelAr: "ألغي تلقائياً (كلمات محظورة)",
+  },
+  "test-order": {
+    owner: "us",
+    labelEn: "Test order (internal)",
+    labelAr: "طلب اختباري (داخلي)",
+  },
+
+  // ── CUSTOMER (their own decision or circumstance) ─────────────────────────
   "the-client-has-changed-his-mind": {
     owner: "customer",
     labelEn: "Client changed his mind",
@@ -49,11 +150,28 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     labelEn: "Do-not-call / rejection list",
     labelAr: "قائمة رفض الاتصال",
   },
-  "the-client-found-the-product-cheaper-elsewhere": {
-    owner: "product",
-    labelEn: "Found the product cheaper elsewhere",
-    labelAr: "وجد المنتج أرخص في مكان آخر",
+  "the-client-has-no-money": {
+    owner: "customer",
+    labelEn: "Client has no money",
+    labelAr: "العميل ليس لديه مال",
   },
+  "the-client-has-already-purchased-this-product": {
+    owner: "customer",
+    labelEn: "Client already bought the product elsewhere",
+    labelAr: "العميل اشترى المنتج من مكان آخر",
+  },
+  "the-client-no-longer-wants-this-product": {
+    owner: "customer",
+    labelEn: "Client no longer wants the product",
+    labelAr: "العميل لم يعد يريد المنتج",
+  },
+  "cancel-per-sms": {
+    owner: "customer",
+    labelEn: "Customer cancelled via SMS",
+    labelAr: "العميل ألغى عبر رسالة نصية",
+  },
+
+  // ── MERCHANT (pricing, stock, fulfilment) ─────────────────────────────────
   "the-client-finds-that-the-product-very-expensive": {
     owner: "merchant",
     labelEn: "Price too high",
@@ -61,8 +179,35 @@ export const REASON_MAP: Record<string, ReasonDef> = {
   },
   "the-product-is-no-longer-available": {
     owner: "merchant",
+    labelEn: "Product no longer available",
+    labelAr: "المنتج لم يعد متوفراً",
+  },
+  "product-out-of-stock": {
+    owner: "merchant",
     labelEn: "Product out of stock",
-    labelAr: "المنتج غير متوفر",
+    labelAr: "المنتج نفد من المخزون",
+  },
+  "seller-did-not-provider-required-quantity": {
+    owner: "merchant",
+    labelEn: "Seller didn't provide required quantity",
+    labelAr: "التاجر لم يوفر الكمية المطلوبة",
+  },
+  "card-payment-percentage-too-high": {
+    owner: "merchant",
+    labelEn: "Card payment fee too high",
+    labelAr: "رسوم الدفع بالبطاقة مرتفعة جداً",
+  },
+
+  // ── PRODUCT (quality / reputation / price competitiveness) ───────────────
+  "the-client-found-the-product-cheaper-elsewhere": {
+    owner: "product",
+    labelEn: "Found the product cheaper elsewhere",
+    labelAr: "وجد المنتج أرخص في مكان آخر",
+  },
+  "because-of-bad-comments": {
+    owner: "product",
+    labelEn: "Bad reviews / comments about the product",
+    labelAr: "تعليقات سلبية على المنتج",
   },
 };
 
