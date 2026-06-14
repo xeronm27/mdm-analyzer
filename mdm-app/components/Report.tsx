@@ -7,17 +7,11 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
-  ReferenceLine,
 } from "recharts";
 import type { Facts, SellerFacts } from "@/lib/engine/index";
 import type { Narrative } from "@/lib/ai";
-import type { AdsFacts, CprRating } from "@/lib/engine/ads";
-import { CPR_THRESHOLDS } from "@/lib/engine/ads";
+import type { AdsFacts } from "@/lib/engine/ads";
 
 const OWNER_COLORS: Record<string, string> = {
   ads: "#6366f1",
@@ -36,25 +30,8 @@ const OWNER_EN: Record<string, string> = {
   uncategorized: "Uncategorized",
 };
 
-// CPR colour mapping
-const CPR_COLOR: Record<CprRating, string> = {
-  excellent: "#16a34a",
-  good: "#0ea5e9",
-  average: "#f59e0b",
-  poor: "#dc2626",
-};
-const CPR_LABEL_AR: Record<CprRating, string> = {
-  excellent: "ممتاز",
-  good: "جيد",
-  average: "متوسط",
-  poor: "مرتفع — أوقفه",
-};
-
 // ── Confirmation-rate rating ──────────────────────────────────────────────
-function getRating(rate: number | null): {
-  labelEn: string; labelAr: string; contextAr: string;
-  bg: string; text: string; border: string;
-} {
+function getRating(rate: number | null) {
   if (rate === null)
     return { labelEn: "—", labelAr: "—", contextAr: "—", bg: "bg-slate-100", text: "text-slate-500", border: "border-slate-200" };
   if (rate >= 70)
@@ -73,11 +50,10 @@ function rateColor(r: number | null) {
   return "#dc2626";
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────────────────
 export function Report({ facts }: { facts: Facts }) {
   const [idx, setIdx] = useState(0);
   const seller = facts.sellers[idx];
-
   return (
     <div className="mt-8 space-y-6">
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
@@ -103,7 +79,6 @@ function SellerReport({ seller, facts }: { seller: SellerFacts; facts: Facts }) 
   return (
     <div className="space-y-6">
       <Header seller={seller} benchmark={facts.benchmark.confirmationRate} />
-
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Real confirmation rate" subtitle="raw → cleaned (after removing duplicates)">
           <RateView seller={seller} />
@@ -113,16 +88,15 @@ function SellerReport({ seller, facts }: { seller: SellerFacts; facts: Facts }) 
         </Card>
       </div>
 
-      {facts.ads && <FacebookSection ads={facts.ads} />}
+      {/* Facebook Lead Quality — always shown if FB file uploaded */}
+      {facts.ads && <FacebookLeadQuality seller={seller} ads={facts.ads} />}
 
       <Card title="Per-product breakdown" subtitle="worst confirmation rate first">
         <ProductTable seller={seller} />
       </Card>
-
       <Card title="Recommendations" subtitle="rule-based, each with its evidence">
         <Recommendations seller={seller} />
       </Card>
-
       <Card title="AI diagnosis" subtitle="interpretation only — every number is verified against the facts">
         <Diagnosis seller={seller} />
       </Card>
@@ -178,6 +152,158 @@ function Card({ title, subtitle, children }: { title: string; subtitle?: string;
   );
 }
 
+// ── Facebook Lead Quality Section ─────────────────────────────────────────
+// Focus: how many fake/low-quality leads came through the ad funnel,
+// and which placements are known sources of this problem.
+function FacebookLeadQuality({ seller, ads }: { seller: SellerFacts; ads: AdsFacts }) {
+  const fakeTotal = seller.fakeLeadTotal;
+  const fakeShare = seller.fakeLeadShare;
+  const hasFakeLeads = fakeTotal > 0;
+  const hasFlaggedPlacements = ads.flaggedPlacements.length > 0;
+
+  // Donut data for fake lead reasons
+  const FAKE_COLORS = ["#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"];
+  const donutData = seller.fakeLeadReasons.map((r, i) => ({
+    name: r.labelAr,
+    nameEn: r.labelEn,
+    value: r.count,
+    share: r.share,
+    color: FAKE_COLORS[i % FAKE_COLORS.length],
+  }));
+
+  return (
+    <Card
+      title="Facebook — Lead Quality Analysis"
+      subtitle="تحليل جودة الليدز — الليدز الوهمية والمصادر المشبوهة"
+    >
+      {/* ── Overview strip ── */}
+      <div className="mb-5 grid grid-cols-3 gap-3">
+        <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+          <div className="text-2xl font-bold text-slate-800">{ads.totalResults}</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Total leads</div>
+          <div className="text-[11px] text-slate-400" dir="rtl">إجمالي الليدز</div>
+        </div>
+        <div className={`rounded-xl px-3 py-3 text-center ${hasFakeLeads ? "bg-red-50" : "bg-emerald-50"}`}>
+          <div className={`text-2xl font-bold ${hasFakeLeads ? "text-red-600" : "text-emerald-600"}`}>
+            {fakeTotal}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Fake / ghost leads</div>
+          <div className="text-[11px] text-slate-400" dir="rtl">ليدز وهمية ({fakeShare}% من الإلغاءات)</div>
+        </div>
+        <div className={`rounded-xl px-3 py-3 text-center ${hasFlaggedPlacements ? "bg-amber-50" : "bg-emerald-50"}`}>
+          <div className={`text-2xl font-bold ${hasFlaggedPlacements ? "text-amber-600" : "text-emerald-600"}`}>
+            {hasFlaggedPlacements ? ads.flaggedPlacements.length : "✓"}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Risky placements</div>
+          <div className="text-[11px] text-slate-400" dir="rtl">مواضع مشبوهة</div>
+        </div>
+      </div>
+
+      {/* ── Fake lead reasons ── */}
+      {hasFakeLeads ? (
+        <div className="mb-5">
+          <h4 className="text-sm font-semibold text-slate-700 mb-3">
+            أسباب الليدز الوهمية ({fakeTotal} طلب — {fakeShare}% من الإلغاءات)
+          </h4>
+          <div className="flex items-start gap-4">
+            {donutData.length > 0 && (
+              <div className="h-36 w-36 shrink-0">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={donutData} dataKey="value" innerRadius={32} outerRadius={60} paddingAngle={2}>
+                      {donutData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number, _: string, props: any) => [`${v} orders`, props.payload.nameEn]} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <ul className="flex-1 space-y-2">
+              {seller.fakeLeadReasons.map((r, i) => (
+                <li key={r.reason} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ background: FAKE_COLORS[i % FAKE_COLORS.length] }} />
+                    <span className="text-slate-700">{r.labelAr}</span>
+                    <span className="text-slate-400 text-xs hidden sm:inline">· {r.labelEn}</span>
+                  </span>
+                  <span className="font-semibold text-red-600 ml-2">{r.count} ({r.share}%)</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-sm text-emerald-700" dir="rtl">
+          ✓ لا توجد ليدز وهمية مكتشفة في هذه الدورة — جودة الليدز جيدة من ناحية المصدر.
+        </div>
+      )}
+
+      {/* ── Placement risk table ── */}
+      <div>
+        <h4 className="text-sm font-semibold text-slate-700 mb-3">
+          مواضع الإعلانات — خطر الليدز الوهمية
+        </h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-slate-400 text-xs">
+                <th className="pb-2">Placement / الموضع</th>
+                <th className="pb-2">Results</th>
+                <th className="pb-2">Risk / الخطر</th>
+                <th className="pb-2">Action / الإجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ads.byPlacement.filter(p => p.results > 0).map((p) => {
+                const risk = p.flagged ? "high" : "low";
+                return (
+                  <tr key={p.placement} className="border-b last:border-0">
+                    <td className="py-2 pr-3 font-medium text-slate-700">
+                      {p.flagged && <span className="mr-1 text-amber-500">⚠</span>}
+                      {p.placement}
+                    </td>
+                    <td className="py-2 text-slate-600">{p.results}</td>
+                    <td className="py-2">
+                      {risk === "high" ? (
+                        <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-200">
+                          مرتفع — ليدز وهمية
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200">
+                          منخفض ✓
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 text-xs text-slate-500">
+                      {p.flagged
+                        ? "أوقفه في Ads Manager → Manual Placements"
+                        : "استمر"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Flagged placement explanation */}
+        {hasFlaggedPlacements && (
+          <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm" dir="rtl">
+            <p className="font-semibold text-red-800 mb-1">
+              ⚠ {ads.flaggedPlacements.map(p => p.placement).join("، ")} — مواضع معروفة بالليدز الوهمية
+            </p>
+            <p className="text-red-700">
+              هذه المواضع تجلب نقرات عرضية وغير مقصودة (أطفال، نقرات خاطئة، جمهور خارج الاستهداف).
+              الحل: <strong>Ads Manager → Ad Set → Edit → Placements → Manual Placements</strong> → أزل هذه المواضع من القائمة.
+            </p>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // ── Rate bars ─────────────────────────────────────────────────────────────
 function RateView({ seller }: { seller: SellerFacts }) {
   const bars = [
@@ -217,162 +343,6 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "go
     <div className="rounded-lg bg-slate-50 py-2">
       <div className={`text-xl font-bold ${c}`}>{value}</div>
       <div className="text-[11px] text-slate-400">{label}</div>
-    </div>
-  );
-}
-
-// ── Facebook section (full rewrite) ───────────────────────────────────────
-function FacebookSection({ ads }: { ads: AdsFacts }) {
-  const blendedColor = CPR_COLOR[ads.blendedCprRating];
-  const blendedLabelAr = CPR_LABEL_AR[ads.blendedCprRating];
-
-  const chartData = ads.byPlacement
-    .filter((p) => p.results > 0)
-    .map((p) => ({
-      name: (p.flagged ? "⚠ " : "") + p.placement,
-      cpr: p.costPerResult ?? 0,
-      color: CPR_COLOR[p.cprRating],
-      flagged: p.flagged,
-      rating: CPR_LABEL_AR[p.cprRating],
-      results: p.results,
-      spend: p.spend,
-    }));
-
-  return (
-    <Card
-      title="Facebook Ads Analysis"
-      subtitle="تحليل إعلانات فيسبوك — تكلفة النتيجة لكل موضع"
-    >
-      {/* ── Summary strip ── */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryTile
-          labelEn="Total Spend"
-          labelAr="إجمالي الإنفاق"
-          value={`$${ads.totalSpend.toFixed(2)}`}
-          tone="neutral"
-        />
-        <SummaryTile
-          labelEn="Total Results"
-          labelAr="إجمالي النتائج"
-          value={String(ads.totalResults)}
-          tone="neutral"
-        />
-        <SummaryTile
-          labelEn="Blended CPR"
-          labelAr={`تكلفة/نتيجة — ${blendedLabelAr}`}
-          value={`$${ads.blendedCostPerResult ?? "—"}`}
-          valueColor={blendedColor}
-          tone="neutral"
-        />
-        {ads.estimatedWastedSpend > 0 ? (
-          <SummaryTile
-            labelEn="Estimated Wasted"
-            labelAr="إنفاق ضائع (مواضع رديئة)"
-            value={`$${ads.estimatedWastedSpend.toFixed(2)}`}
-            tone="bad"
-          />
-        ) : (
-          <SummaryTile
-            labelEn="Junk Placements"
-            labelAr="مواضع رديئة"
-            value={ads.flaggedPlacements.length === 0 ? "None ✓" : `${ads.flaggedPlacements.length} found`}
-            tone={ads.flaggedPlacements.length === 0 ? "good" : "bad"}
-          />
-        )}
-      </div>
-
-      {/* ── CPR scale legend ── */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-slate-500">
-        <span className="font-medium">تكلفة/نتيجة:</span>
-        {(["excellent", "good", "average", "poor"] as CprRating[]).map((r) => (
-          <span key={r} className="flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CPR_COLOR[r] }} />
-            {CPR_LABEL_AR[r]}
-            {r === "excellent" && ` (<$${CPR_THRESHOLDS.excellent})`}
-            {r === "good" && ` ($${CPR_THRESHOLDS.excellent}–$${CPR_THRESHOLDS.good})`}
-            {r === "average" && ` ($${CPR_THRESHOLDS.good}–$${CPR_THRESHOLDS.average})`}
-            {r === "poor" && ` (>$${CPR_THRESHOLDS.average})`}
-          </span>
-        ))}
-      </div>
-
-      {/* ── Bar chart ── */}
-      {chartData.length === 0 ? (
-        <p className="text-sm text-slate-400">No placement data with results.</p>
-      ) : (
-        <div style={{ height: Math.max(180, chartData.length * 52) }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ left: 16, right: 48, top: 4, bottom: 4 }}>
-              <XAxis type="number" tickFormatter={(v) => `$${v}`} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" width={190} tick={{ fontSize: 11 }} />
-              <Tooltip
-                formatter={(v: number, _name: string, props: any) =>
-                  [`$${v}/result — ${props.payload.rating} (${props.payload.results} results, $${props.payload.spend} spent)`, "CPR"]
-                }
-              />
-              {/* "Good" threshold reference line */}
-              <ReferenceLine x={CPR_THRESHOLDS.good} stroke="#94a3b8" strokeDasharray="4 3"
-                label={{ value: `$${CPR_THRESHOLDS.good} benchmark`, position: "top", fontSize: 10, fill: "#94a3b8" }} />
-              <Bar dataKey="cpr" radius={[0, 4, 4, 0]} label={{ position: "right", formatter: (v: number) => `$${v}`, fontSize: 11 }}>
-                {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* ── Best / Worst callout ── */}
-      {(ads.bestPlacement || ads.worstCostPerResult) && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {ads.bestPlacement && (
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-emerald-600 mb-1">✓ أفضل موضع</div>
-              <div className="font-medium text-slate-800 text-sm">{ads.bestPlacement.placement}</div>
-              <div className="text-emerald-700 font-bold">${ads.bestPlacement.costPerResult}/result</div>
-              <div className="text-xs text-slate-500 mt-1">{ads.bestPlacement.results} results · ${ads.bestPlacement.spend} spent → زِد ميزانيته</div>
-            </div>
-          )}
-          {ads.worstCostPerResult && ads.worstCostPerResult.placement !== ads.bestPlacement?.placement && (
-            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-red-600 mb-1">✗ أسوأ موضع</div>
-              <div className="font-medium text-slate-800 text-sm">{ads.worstCostPerResult.placement}</div>
-              <div className="text-red-700 font-bold">${ads.worstCostPerResult.costPerResult}/result</div>
-              <div className="text-xs text-slate-500 mt-1">{ads.worstCostPerResult.results} results · ${ads.worstCostPerResult.spend} spent → أوقفه أو قلّص ميزانيته</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Wasted spend alert ── */}
-      {ads.estimatedWastedSpend > 0 && (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm" dir="rtl">
-          <span className="font-semibold text-amber-800">⚠ إنفاق ضائع تقديري: ${ads.estimatedWastedSpend.toFixed(2)}</span>
-          <p className="mt-1 text-amber-700">
-            هذا المبلغ يذهب على مواضع منخفضة الجودة ({ads.flaggedPlacements.map(p => p.placement).join("، ")}).
-            الحل: في Ads Manager → Ad Set → Edit → Manual Placements → أزل هذه المواضع.
-          </p>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function SummaryTile({
-  labelEn, labelAr, value, tone, valueColor,
-}: {
-  labelEn: string; labelAr: string; value: string;
-  tone: "good" | "bad" | "neutral"; valueColor?: string;
-}) {
-  const textColor = valueColor
-    ? undefined
-    : tone === "good" ? "#16a34a" : tone === "bad" ? "#dc2626" : "#1e293b";
-  return (
-    <div className="rounded-xl bg-slate-50 px-3 py-3 text-center">
-      <div className="text-xl font-bold" style={{ color: textColor ?? valueColor }}>{value}</div>
-      <div className="text-[11px] text-slate-400 mt-0.5">{labelEn}</div>
-      <div className="text-[11px] text-slate-400" dir="rtl">{labelAr}</div>
     </div>
   );
 }
