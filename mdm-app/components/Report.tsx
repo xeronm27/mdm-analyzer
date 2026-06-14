@@ -28,10 +28,71 @@ const OWNER_EN: Record<string, string> = {
   ads: "Ads",
   merchant: "Merchant",
   product: "Product",
-  us: "Us (Call Center)",
+  us: "MDM Express",
   customer: "Customer",
   uncategorized: "Uncategorized",
 };
+
+// ── Rating system ──────────────────────────────────────────────────────────
+// Benchmarks are calibrated for Libya COD market.
+// ≥70% = Excellent  |  ≥60% = Good  |  ≥50% = Average  |  <50% = Poor
+function getRating(rate: number | null): {
+  labelEn: string;
+  labelAr: string;
+  contextAr: string;
+  bg: string;
+  text: string;
+  border: string;
+} {
+  if (rate === null)
+    return {
+      labelEn: "—",
+      labelAr: "—",
+      contextAr: "—",
+      bg: "bg-slate-100",
+      text: "text-slate-500",
+      border: "border-slate-200",
+    };
+  if (rate >= 70)
+    return {
+      labelEn: "Excellent",
+      labelAr: "ممتاز",
+      contextAr:
+        "نسبة استثنائية — أفضل من 90% من التجار في سوق الدفع عند الاستلام بليبيا. المنتج يبيع جداً بشكل جيد.",
+      bg: "bg-emerald-500",
+      text: "text-white",
+      border: "border-emerald-400",
+    };
+  if (rate >= 60)
+    return {
+      labelEn: "Good",
+      labelAr: "جيد",
+      contextAr:
+        "نسبة جيدة — تتجاوز متوسط السوق الليبي (COD). معظم التجار يتمنون الوصول لهذا المستوى.",
+      bg: "bg-blue-500",
+      text: "text-white",
+      border: "border-blue-400",
+    };
+  if (rate >= 50)
+    return {
+      labelEn: "Average",
+      labelAr: "متوسط",
+      contextAr:
+        "نسبة مقبولة لكن هناك مجال واضح للتحسين. المتوسط في السوق الليبي حول 55%.",
+      bg: "bg-amber-400",
+      text: "text-white",
+      border: "border-amber-300",
+    };
+  return {
+    labelEn: "Poor",
+    labelAr: "ضعيف",
+    contextAr:
+      "نسبة دون المتوسط — يجب مراجعة جودة الإعلانات والمنتج فوراً لتجنب الخسائر.",
+    bg: "bg-red-500",
+    text: "text-white",
+    border: "border-red-400",
+  };
+}
 
 function rateColor(r: number | null) {
   if (r === null) return "#94a3b8";
@@ -118,6 +179,8 @@ function Header({
   benchmark: number | null;
 }) {
   const vs = seller.vsBenchmark;
+  const rating = getRating(seller.confirmationRate);
+
   return (
     <div className="print-block rounded-2xl bg-gradient-to-br from-brand to-indigo-700 p-6 text-white shadow">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -128,9 +191,15 @@ function Header({
           <div className="text-3xl font-bold">{seller.store}</div>
         </div>
         <div className="text-right">
-          <div className="text-5xl font-extrabold">
-            {seller.confirmationRate}
-            <span className="text-2xl">%</span>
+          <div className="flex items-end justify-end gap-3">
+            <div className="text-5xl font-extrabold">
+              {seller.confirmationRate}
+              <span className="text-2xl">%</span>
+            </div>
+            {/* Rating badge */}
+            <div className={`mb-1 rounded-xl px-3 py-1.5 text-sm font-bold ${rating.bg} ${rating.text} border ${rating.border}`}>
+              {rating.labelAr} · {rating.labelEn}
+            </div>
           </div>
           <div className="text-sm text-indigo-100">
             confirmation rate ·{" "}
@@ -139,6 +208,11 @@ function Header({
               : `${vs >= 0 ? "+" : ""}${vs} pts vs benchmark ${benchmark}%`}
           </div>
         </div>
+      </div>
+
+      {/* Context sentence for merchant */}
+      <div className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm text-indigo-50" dir="rtl">
+        {rating.contextAr}
       </div>
     </div>
   );
