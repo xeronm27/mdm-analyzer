@@ -5,7 +5,7 @@
 //
 // OWNER LOGIC:
 //   ads      → bad-quality / fake traffic from campaigns
-//   us        → internal ops failures we can actually fix (force-cancel, auto-cancel,
+//   us        → MDM Express internal ops failures (force-cancel, auto-cancel,
 //               delivery coverage gaps, agent knowledge gaps)
 //   customer  → customer's own decision or unreachability AFTER full follow-up
 //               (call center calls 3x/day for 3 days + WhatsApp — not our fault)
@@ -66,7 +66,7 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     labelAr: "الإعلان ذكر توصيل مجاني (مضلِّل)",
   },
 
-  // ── US / INTERNAL OPS (things we can actually control and fix) ────────────
+  // ── MDM EXPRESS / INTERNAL OPS ────────────────────────────────────────────
   "the-responsible-set-it-by-force": {
     owner: "us",
     labelEn: "Force-cancelled by agent",
@@ -109,7 +109,6 @@ export const REASON_MAP: Record<string, ReasonDef> = {
   },
 
   // ── CUSTOMER (unreachable after full follow-up, or their own decision) ─────
-  // Call center calls 3x/day for 3 days and sends WhatsApp — not our fault.
   "the-client-does-not-respond": {
     owner: "customer",
     labelEn: "Client does not respond (after full follow-up)",
@@ -225,7 +224,7 @@ export const OWNER_LABEL: Record<Owner, { en: string; ar: string }> = {
   ads: { en: "Ads", ar: "الإعلانات" },
   merchant: { en: "Merchant", ar: "التاجر" },
   product: { en: "Product", ar: "المنتج" },
-  us: { en: "Us (Internal)", ar: "نحن (داخلي)" },
+  us: { en: "MDM Express", ar: "MDM Express" },
   customer: { en: "Customer", ar: "العميل" },
 };
 
