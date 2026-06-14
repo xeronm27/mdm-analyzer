@@ -6,7 +6,7 @@
 
 import { RateBlock, SellerReport } from "./compute";
 import { OWNER_LABEL } from "./classify";
-import { AdsFacts } from "./ads";
+import { AdsFacts, CPR_THRESHOLDS } from "./ads";
 
 export interface Recommendation {
   priority: "high" | "medium" | "low";
@@ -18,10 +18,12 @@ export interface Recommendation {
 
 // thresholds (tunable)
 const T = {
-  duplicateShare: 0.15, // removed dupes as share of all orders
-  openShare: 0.25, // open bucket as share of decided+open
-  ownerShare: 30, // a failure owner taking >=30% of cancellations
+  duplicateShare: 0.15,   // removed dupes as share of all orders
+  openShare: 0.25,        // open bucket as share of decided+open
+  ownerShare: 30,         // a failure owner taking ≥30% of cancellations
   invalidPhoneShare: 0.2,
+  highCpr: CPR_THRESHOLDS.average,  // blended CPR above this → flag
+  wastedSpendMin: 5,      // only flag wasted spend if >$5 (avoid noise)
 };
 
 export function recommendForSeller(s: SellerReport, ads?: AdsFacts): Recommendation[] {
@@ -68,16 +70,77 @@ export function recommendForSeller(s: SellerReport, ads?: AdsFacts): Recommendat
     });
   }
 
-  // 5. Ads-level: flagged junk placements still spending
-  if (ads && ads.flaggedPlacements.length > 0) {
-    const f = ads.flaggedPlacements[0];
-    recs.push({
-      priority: "high",
-      owner: OWNER_LABEL.ads.en,
-      titleEn: `Disable low-quality placement "${f.placement}" or switch to manual placements`,
-      titleAr: `إيقاف الموضع منخفض الجودة "${f.placement}" أو التحويل إلى المواضع اليدوية`,
-      evidence: `${f.placement} spent $${f.spend} at $${f.costPerResult}/result (known source of low-intent leads).`,
-    });
+  // ── Facebook-specific rules ──────────────────────────────────────────────
+
+  if (ads) {
+    // 5. Junk/flagged placements wasting budget
+    if (ads.flaggedPlacements.length > 0 && ads.estimatedWastedSpend >= T.wastedSpendMin) {
+      const names = ads.flaggedPlacements.map((p) => p.placement).join(", ");
+      recs.push({
+        priority: "high",
+        owner: OWNER_LABEL.ads.en,
+        titleEn: `Disable junk placements to save $${ads.estimatedWastedSpend} in wasted spend`,
+        titleAr: `أوقف المواضع الرديئة لتوفير $${ads.estimatedWastedSpend} من الإنفاق الضائع`,
+        evidence: `${names} — known low-intent placements (accidental clicks, non-buyers). Go to Ads Manager → Ad Set → Edit Placements → Manual Placements → uncheck these.`,
+      });
+    } else if (ads.flaggedPlacements.length > 0) {
+      const f = ads.flaggedPlacements[0];
+      recs.push({
+        priority: "medium",
+        owner: OWNER_LABEL.ads.en,
+        titleEn: `Switch to Manual Placements and exclude "${f.placement}"`,
+        titleAr: `التحويل إلى المواضع اليدوية واستبعاد "${f.placement}"`,
+        evidence: `${f.placement} spent $${f.spend} at $${f.costPerResult}/result — low-intent placement for COD.`,
+      });
+    }
+
+    // 6. High blended CPR → overall ads quality issue
+    if (
+      ads.blendedCostPerResult !== null &&
+      ads.blendedCostPerResult >= T.highCpr
+    ) {
+      recs.push({
+        priority: "high",
+        owner: OWNER_LABEL.ads.en,
+        titleEn: `Overall cost-per-result is high ($${ads.blendedCostPerResult}) — review audience targeting`,
+        titleAr: `تكلفة النتيجة الإجمالية مرتفعة ($${ads.blendedCostPerResult}) — راجع استهداف الجمهور`,
+        evidence: `Libya COD benchmark is under $${CPR_THRESHOLDS.good}/result. Your blended CPR of $${ads.blendedCostPerResult} means your audience likely contains low-intent buyers. Try narrowing age, adding interest filters, or excluding previous buyers.`,
+      });
+    }
+
+    // 7. Best placement identified → recommend scaling it
+    if (
+      ads.bestPlacement &&
+      ads.bestPlacement.results >= 5 &&
+      ads.bestPlacement.cprRating !== "poor"
+    ) {
+      const b = ads.bestPlacement;
+      recs.push({
+        priority: "low",
+        owner: OWNER_LABEL.ads.en,
+        titleEn: `Scale up "${b.placement}" — your best-performing placement at $${b.costPerResult}/result`,
+        titleAr: `زِد ميزانية "${b.placement}" — أفضل موضع لديك بـ $${b.costPerResult}/نتيجة`,
+        evidence: `${b.placement} generated ${b.results} results at $${b.costPerResult}/result (${b.spend.toFixed(2)}$ spent). Increase its budget allocation within the same ad set.`,
+      });
+    }
+
+    // 8. Worst non-junk placement significantly more expensive than best
+    if (
+      ads.worstCostPerResult &&
+      ads.bestPlacement &&
+      ads.worstCostPerResult.placement !== ads.bestPlacement.placement &&
+      ads.worstCostPerResult.cprRating === "poor" &&
+      !ads.worstCostPerResult.flagged
+    ) {
+      const w = ads.worstCostPerResult;
+      recs.push({
+        priority: "medium",
+        owner: OWNER_LABEL.ads.en,
+        titleEn: `Pause or reduce "${w.placement}" — $${w.costPerResult}/result is too expensive`,
+        titleAr: `أوقف أو قلّص "${w.placement}" — $${w.costPerResult}/نتيجة مرتفع جداً`,
+        evidence: `${w.placement} is costing $${w.costPerResult}/result vs your best placement at $${ads.bestPlacement.costPerResult}/result. Reallocate that $${w.spend.toFixed(2)} budget to better placements.`,
+      });
+    }
   }
 
   return dedupeAndRank(recs);
