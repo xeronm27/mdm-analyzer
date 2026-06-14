@@ -2,6 +2,15 @@
 // Reason classification -> responsible party (built from the REAL reason slugs)
 // AI is never involved here. This is a deterministic lookup. Unknown reasons
 // go to an "uncategorized" review queue and are never silently guessed.
+//
+// OWNER LOGIC:
+//   ads      → bad-quality / fake traffic from campaigns
+//   us        → internal ops failures we can actually fix (force-cancel, auto-cancel,
+//               delivery coverage gaps, agent knowledge gaps)
+//   customer  → customer's own decision or unreachability AFTER full follow-up
+//               (call center calls 3x/day for 3 days + WhatsApp — not our fault)
+//   merchant  → pricing, stock, fulfilment issues on the seller side
+//   product   → product reputation or price-competitiveness issues
 // ---------------------------------------------------------------------------
 
 export type Owner = "ads" | "merchant" | "product" | "us" | "customer";
@@ -48,7 +57,7 @@ export const REASON_MAP: Record<string, ReasonDef> = {
   },
   "african-bad-lead": {
     owner: "ads",
-    labelEn: "African bad lead (out-of-market traffic)",
+    labelEn: "Out-of-market traffic (bad lead)",
     labelAr: "طلب من خارج السوق المستهدف",
   },
   "delivery-mentioned-free": {
@@ -57,37 +66,7 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     labelAr: "الإعلان ذكر توصيل مجاني (مضلِّل)",
   },
 
-  // ── US / CALL CENTER (reachability & operations failures) ─────────────────
-  "the-client-does-not-respond": {
-    owner: "us",
-    labelEn: "Client does not respond",
-    labelAr: "العميل لا يرد",
-  },
-  "the-client-is-unreachable": {
-    owner: "us",
-    labelEn: "Client unreachable",
-    labelAr: "تعذر الوصول إلى العميل",
-  },
-  "the-client-is-not-available": {
-    owner: "us",
-    labelEn: "Client not available (should retry)",
-    labelAr: "العميل غير متاح (يجب إعادة المحاولة)",
-  },
-  "the-client-is-on-the-move": {
-    owner: "us",
-    labelEn: "Client on the move (should retry later)",
-    labelAr: "العميل في تنقل (يجب المتابعة لاحقاً)",
-  },
-  "after-3-days-of-calls": {
-    owner: "us",
-    labelEn: "Gave up after 3 days of calls",
-    labelAr: "توقف بعد 3 أيام من المحاولات",
-  },
-  "line-is-busy": {
-    owner: "us",
-    labelEn: "Line busy (should retry)",
-    labelAr: "الخط مشغول (يجب إعادة المحاولة)",
-  },
+  // ── US / INTERNAL OPS (things we can actually control and fix) ────────────
   "the-responsible-set-it-by-force": {
     owner: "us",
     labelEn: "Force-cancelled by agent",
@@ -102,11 +81,6 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     owner: "us",
     labelEn: "State not covered by delivery",
     labelAr: "المنطقة غير مشمولة بالتوصيل",
-  },
-  "shipping-fees-too-high": {
-    owner: "us",
-    labelEn: "Shipping fees too high",
-    labelAr: "رسوم الشحن مرتفعة جداً",
   },
   "need-more-info-about-the-product": {
     owner: "us",
@@ -134,7 +108,38 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     labelAr: "طلب اختباري (داخلي)",
   },
 
-  // ── CUSTOMER (their own decision or circumstance) ─────────────────────────
+  // ── CUSTOMER (unreachable after full follow-up, or their own decision) ─────
+  // Call center calls 3x/day for 3 days and sends WhatsApp — not our fault.
+  "the-client-does-not-respond": {
+    owner: "customer",
+    labelEn: "Client does not respond (after full follow-up)",
+    labelAr: "العميل لا يرد (بعد المتابعة الكاملة)",
+  },
+  "the-client-is-unreachable": {
+    owner: "customer",
+    labelEn: "Client unreachable (after full follow-up)",
+    labelAr: "تعذر الوصول إلى العميل (بعد المتابعة الكاملة)",
+  },
+  "the-client-is-not-available": {
+    owner: "customer",
+    labelEn: "Client not available (after full follow-up)",
+    labelAr: "العميل غير متاح (بعد المتابعة الكاملة)",
+  },
+  "the-client-is-on-the-move": {
+    owner: "customer",
+    labelEn: "Client on the move / not reachable",
+    labelAr: "العميل في تنقل / تعذر التواصل معه",
+  },
+  "after-3-days-of-calls": {
+    owner: "customer",
+    labelEn: "No response after 3 days of calls",
+    labelAr: "لم يرد بعد 3 أيام من المحاولات",
+  },
+  "line-is-busy": {
+    owner: "customer",
+    labelEn: "Line always busy",
+    labelAr: "الخط مشغول دائماً",
+  },
   "the-client-has-changed-his-mind": {
     owner: "customer",
     labelEn: "Client changed his mind",
@@ -169,6 +174,11 @@ export const REASON_MAP: Record<string, ReasonDef> = {
     owner: "customer",
     labelEn: "Customer cancelled via SMS",
     labelAr: "العميل ألغى عبر رسالة نصية",
+  },
+  "shipping-fees-too-high": {
+    owner: "customer",
+    labelEn: "Customer refused standard shipping fees",
+    labelAr: "العميل رفض رسوم الشحن المعتادة",
   },
 
   // ── MERCHANT (pricing, stock, fulfilment) ─────────────────────────────────
@@ -215,7 +225,7 @@ export const OWNER_LABEL: Record<Owner, { en: string; ar: string }> = {
   ads: { en: "Ads", ar: "الإعلانات" },
   merchant: { en: "Merchant", ar: "التاجر" },
   product: { en: "Product", ar: "المنتج" },
-  us: { en: "Us (Call Center)", ar: "نحن (مركز الاتصال)" },
+  us: { en: "Us (Internal)", ar: "نحن (داخلي)" },
   customer: { en: "Customer", ar: "العميل" },
 };
 
