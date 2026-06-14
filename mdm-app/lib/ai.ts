@@ -10,6 +10,8 @@
 // deterministic template narrative (numbers guaranteed correct) so the app
 // always returns a valid, trustworthy report.
 // ---------------------------------------------------------------------------
+// AI provider: Google Gemini Flash (free tier) — set GEMINI_API_KEY in Vercel.
+// ---------------------------------------------------------------------------
 
 import type { SellerFacts } from "./engine/index";
 import { OWNER_LABEL } from "./engine/classify";
