@@ -37,7 +37,7 @@ export default function Home() {
     <main className="mx-auto max-w-6xl px-5 py-10">
       <header className="mb-8 no-print">
         <h1 className="text-3xl font-bold text-ink">
-          MDM Express · Confirmation Analyzer
+          MDM Express · Confirmation Analyzer sellers
         </h1>
         <p className="mt-1 text-slate-500">
           Upload a merchant&apos;s orders export (and optionally the Facebook ads
