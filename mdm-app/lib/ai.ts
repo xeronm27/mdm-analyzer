@@ -69,17 +69,25 @@ function extractNumbers(text: string): string[] {
 function runGuardrail(text: string, allowed: Set<string>) {
   const found = extractNumbers(text);
   const violations = found.filter((n) => {
-    if (allowed.has(n)) return true; // exact
-    // tolerance: allow rounded match (e.g. 49 vs 49.1)
+    if (allowed.has(n)) return true;
     const v = Number(n);
     for (const a of allowed) {
       if (Math.abs(Number(a) - v) < 0.6) return true;
     }
     return false;
   });
-  // violations = numbers NOT matched
   const bad = found.filter((n) => !violations.includes(n));
   return { checked: found.length, violations: bad };
+}
+
+// parse JSON from Gemini response — handles plain JSON or markdown code blocks
+function parseGeminiJson(text: string): { en: string; ar: string } {
+  // strip markdown code fences if present
+  const stripped = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON object found");
+  return JSON.parse(stripped.slice(start, end + 1));
 }
 
 // ---- deterministic narrative (template, always numerically correct) --------
@@ -130,7 +138,7 @@ export function deterministicNarrative(s: SellerFacts): Narrative {
   };
 }
 
-// ---- AI narrative via Gemini Flash (free tier, no extra package needed) ----
+// ---- AI narrative via Gemini Flash (free tier) ------------------------------
 export async function interpret(s: SellerFacts): Promise<Narrative> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return deterministicNarrative(s);
@@ -162,7 +170,7 @@ export async function interpret(s: SellerFacts): Promise<Narrative> {
       2
     );
 
-    const prompt = `You are an analyst for MDM Express, a cash-on-delivery fulfilment platform in Libya. You will receive a JSON object of FACTS that were computed precisely by code about one seller's order-confirmation performance.
+    const prompt = `You are an analyst for MDM Express, a cash-on-delivery fulfilment platform in Libya. You will receive a JSON object of FACTS computed precisely by code about one seller's order-confirmation performance.
 
 STRICT RULES:
 - You may ONLY use numbers that appear in the FACTS. Never invent, estimate, round into a new figure, or compute a new number.
@@ -173,13 +181,17 @@ STRICT RULES:
 FACTS:
 ${factsForModel}
 
-Respond as JSON: {"en": "...", "ar": "..."}`;
+Respond with ONLY a valid JSON object, no markdown, no code fences: {"en": "...", "ar": "..."}`;
 
+    // Send key as x-goog-api-key header (required for AQ. format keys)
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": key,
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 1024, temperature: 0.3 },
@@ -187,15 +199,16 @@ Respond as JSON: {"en": "...", "ar": "..."}`;
       }
     );
 
-    if (!res.ok) throw new Error(`Gemini error: ${res.status}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini ${res.status}: ${errText}`);
+    }
 
     const json = await res.json();
-    const text: string =
-      json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const text: string = json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!text) throw new Error("Empty response from Gemini");
 
-    const parsed = JSON.parse(
-      text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)
-    );
+    const parsed = parseGeminiJson(text);
 
     const allowed = allowedNumbers(s);
     const gEn = runGuardrail(parsed.en ?? "", allowed);
