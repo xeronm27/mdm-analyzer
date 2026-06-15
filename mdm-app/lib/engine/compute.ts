@@ -7,21 +7,22 @@
 import { Order } from "./mapping";
 import {
   classifyReason,
+  classifyMerchantCategory,
   DUPLICATE_REASONS,
   Owner,
   OWNER_LABEL,
+  MerchantCategory,
 } from "./classify";
 
 // Human-readable labels for "ads"-classified cancellation reasons
-// (fake / low-quality leads that came through the ad funnel)
 const FAKE_LEAD_LABELS: Record<string, { en: string; ar: string }> = {
-  "the-phone-number-is-wrong":       { en: "Wrong phone number",          ar: "رقم هاتف خاطئ" },
-  "false-order":                     { en: "False order",                  ar: "طلب وهمي" },
-  "fake-order":                      { en: "Fake order",                   ar: "طلب مزيف" },
-  "order-pass-by-child":             { en: "Order placed by a child",      ar: "طلب نفّذه طفل" },
-  "african-bad-lead":                { en: "Non-target / bad lead",        ar: "ليد خارج الاستهداف" },
-  "delivery-mentioned-free":         { en: "Ad promised free delivery",    ar: "الإعلان ذكر توصيل مجاني" },
-  "the-client-did-not-place-the-order": { en: "Client never placed order", ar: "العميل لم يطلب أصلاً" },
+  "the-phone-number-is-wrong":          { en: "Wrong phone number",         ar: "رقم هاتف خاطئ" },
+  "false-order":                         { en: "False order",                 ar: "طلب وهمي" },
+  "fake-order":                          { en: "Fake order",                  ar: "طلب مزيف" },
+  "order-pass-by-child":                 { en: "Order placed by a child",     ar: "طلب نفّذه طفل" },
+  "african-bad-lead":                    { en: "Non-target / bad lead",       ar: "ليد خارج الاستهداف" },
+  "delivery-mentioned-free":             { en: "Ad promised free delivery",   ar: "الإعلان ذكر توصيل مجاني" },
+  "the-client-did-not-place-the-order": { en: "Client never placed order",   ar: "العميل لم يطلب أصلاً" },
 };
 
 export interface FakeLeadReason {
@@ -32,14 +33,20 @@ export interface FakeLeadReason {
   share: number; // % of total cancelled
 }
 
+export interface CategoryBreakdownEntry {
+  category: MerchantCategory;
+  count: number;
+  share: number; // % of total cancelled
+}
+
 export interface RateBlock {
-  orders: number;             // total rows in scope
-  removedDuplicates: number;  // platform-flagged dupes removed before the rate
+  orders: number;
+  removedDuplicates: number;
   suspectedDuplicates: number;
-  decided: number;            // confirmed + cancelled
+  decided: number;
   confirmed: number;
   cancelled: number;
-  open: number;               // not-answer + pending
+  open: number;
   notAnswer: number;
   pending: number;
   rawConfirmationRate: number | null;
@@ -47,10 +54,14 @@ export interface RateBlock {
   failuresByOwner: { owner: Owner | "uncategorized"; count: number; share: number }[];
   topFailureOwner: Owner | "uncategorized" | null;
   uncategorizedReasons: number;
+  // Merchant-friendly 5-category breakdown
+  categoryBreakdown: CategoryBreakdownEntry[];
+  // Lead quality score 0-100 (100 = perfect, lower = more fake/ghost leads)
+  leadQualityScore: number;
   // Fake lead breakdown (ads-classified cancellation reasons)
   fakeLeadReasons: FakeLeadReason[];
-  fakeLeadTotal: number;   // sum of all ads-classified cancellations
-  fakeLeadShare: number;   // % of total cancelled
+  fakeLeadTotal: number;
+  fakeLeadShare: number; // % of total cancelled
 }
 
 function rateOf(confirmed: number, cancelled: number): number | null {
@@ -70,7 +81,7 @@ function countSuspectedDuplicates(orders: Order[]): number {
 }
 
 export function computeRate(allOrders: Order[]): RateBlock {
-  // 1. Remove platform-flagged duplicates before anything else
+  // 1. Remove platform-flagged duplicates
   const removed = allOrders.filter(
     (o) => o.reason !== null && DUPLICATE_REASONS.has(o.reason)
   );
@@ -83,26 +94,38 @@ export function computeRate(allOrders: Order[]): RateBlock {
     notAnswer = 0,
     pending = 0,
     uncategorized = 0;
+
   const ownerCounts = new Map<Owner | "uncategorized", number>();
+  const categoryMap = new Map<MerchantCategory, number>();
   const fakeReasonCounts = new Map<string, number>();
 
   for (const o of scope) {
-    if (o.status === "confirmed") confirmed++;
-    else if (o.status === "cancelled") {
+    if (o.status === "confirmed") {
+      confirmed++;
+    } else if (o.status === "cancelled") {
       cancelled++;
       const c = classifyReason(o.reason);
       ownerCounts.set(c.owner, (ownerCounts.get(c.owner) ?? 0) + 1);
       if (c.owner === "uncategorized") uncategorized++;
-      // track fake lead reasons separately
+
+      // Merchant category
+      const mc = classifyMerchantCategory(o.reason);
+      if (mc) categoryMap.set(mc, (categoryMap.get(mc) ?? 0) + 1);
+
+      // Fake lead reasons (ads-classified)
       if (c.owner === "ads" && o.reason) {
         fakeReasonCounts.set(o.reason, (fakeReasonCounts.get(o.reason) ?? 0) + 1);
       }
-    } else if (o.status === "not-answer") notAnswer++;
-    else if (o.status === "pending") pending++;
-    else uncategorized++;
+    } else if (o.status === "not-answer") {
+      notAnswer++;
+    } else if (o.status === "pending") {
+      pending++;
+    } else {
+      uncategorized++;
+    }
   }
 
-  // raw rate: include the flagged duplicates (the distorted "before" number)
+  // Raw rate (includes flagged duplicates — the "before" number)
   let rawConfirmed = 0, rawCancelled = 0;
   for (const o of allOrders) {
     if (o.status === "confirmed") rawConfirmed++;
@@ -117,7 +140,29 @@ export function computeRate(allOrders: Order[]): RateBlock {
     }))
     .sort((a, b) => b.count - a.count);
 
-  // Build fake lead reason list (sorted by count desc)
+  // 5-category merchant breakdown
+  const categoryBreakdown: CategoryBreakdownEntry[] = [...categoryMap.entries()]
+    .map(([category, count]) => ({
+      category,
+      count,
+      share: cancelled === 0 ? 0 : +((count / cancelled) * 100).toFixed(1),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Lead quality score (0-100)
+  // Penalise for fake leads and unreachable customers heavily
+  const lqFakeShare = categoryBreakdown.find((c) => c.category === "lead_quality")?.share ?? 0;
+  const lqCommShare = categoryBreakdown.find((c) => c.category === "communication")?.share ?? 0;
+  const noAnswerRate = scope.length > 0 ? (notAnswer / scope.length) * 100 : 0;
+  const leadQualityScore = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(100 - lqFakeShare * 1.5 - lqCommShare * 0.8 - noAnswerRate * 0.5)
+    )
+  );
+
+  // Fake lead reasons
   const fakeLeadReasons: FakeLeadReason[] = [...fakeReasonCounts.entries()]
     .map(([reason, count]) => {
       const label = FAKE_LEAD_LABELS[reason] ?? { en: reason, ar: reason };
@@ -132,7 +177,8 @@ export function computeRate(allOrders: Order[]): RateBlock {
     .sort((a, b) => b.count - a.count);
 
   const fakeLeadTotal = fakeLeadReasons.reduce((s, r) => s + r.count, 0);
-  const fakeLeadShare = cancelled === 0 ? 0 : +((fakeLeadTotal / cancelled) * 100).toFixed(1);
+  const fakeLeadShare =
+    cancelled === 0 ? 0 : +((fakeLeadTotal / cancelled) * 100).toFixed(1);
 
   return {
     orders: allOrders.length,
@@ -149,6 +195,8 @@ export function computeRate(allOrders: Order[]): RateBlock {
     failuresByOwner,
     topFailureOwner: failuresByOwner[0]?.owner ?? null,
     uncategorizedReasons: uncategorized,
+    categoryBreakdown,
+    leadQualityScore,
     fakeLeadReasons,
     fakeLeadTotal,
     fakeLeadShare,
@@ -199,7 +247,9 @@ export function buildSellerReports(orders: Order[]): {
         productName: prodOrders[0]?.productName ?? productId,
       });
     }
-    products.sort((a, b) => (a.confirmationRate ?? 999) - (b.confirmationRate ?? 999));
+    products.sort(
+      (a, b) => (a.confirmationRate ?? 999) - (b.confirmationRate ?? 999)
+    );
 
     sellers.push({
       ...block,
@@ -213,7 +263,9 @@ export function buildSellerReports(orders: Order[]): {
     });
   }
 
-  sellers.sort((a, b) => (a.confirmationRate ?? 999) - (b.confirmationRate ?? 999));
+  sellers.sort(
+    (a, b) => (a.confirmationRate ?? 999) - (b.confirmationRate ?? 999)
+  );
   return { sellers, benchmark };
 }
 
