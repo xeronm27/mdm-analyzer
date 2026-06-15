@@ -34,6 +34,25 @@ export function analyze(orderRows: RawRow[], adsRows?: RawRow[]): Facts {
     recommendations: recommendForSeller(s, ads ?? undefined),
   }));
 
+  // Enrich AdsFacts with cross-dataset metrics that need both FB + MDM data
+  if (ads) {
+    const totalConfirmed = sellerFacts.reduce((s, sf) => s + sf.confirmed, 0);
+    ads.costPerConfirmedOrder =
+      totalConfirmed > 0
+        ? +(ads.totalSpend / totalConfirmed).toFixed(2)
+        : null;
+
+    // Data matching warning: if FB results count differs significantly from MDM orders
+    const diff = ads.totalResults - orders.length;
+    const threshold = Math.max(5, Math.round(orders.length * 0.1));
+    ads.dataMatchingWarning = {
+      hasWarning: Math.abs(diff) > threshold,
+      fbResults: ads.totalResults,
+      mdmOrders: orders.length,
+      diff,
+    };
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     period: {
@@ -48,8 +67,7 @@ export function analyze(orderRows: RawRow[], adsRows?: RawRow[]): Facts {
     ads,
     dataQuality: {
       dateRangeAligned: false,
-      note:
-        "Orders and ads exports must cover the same date range before funnel reconciliation is valid. No row-level key links an order to a placement.",
+      note: "Orders and ads exports must cover the same date range before funnel reconciliation is valid. No row-level key links an order to a placement.",
     },
     sellers: sellerFacts,
   };
