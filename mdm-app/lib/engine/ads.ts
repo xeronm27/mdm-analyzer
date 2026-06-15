@@ -13,12 +13,11 @@ const JUNK_PLACEMENTS = [
 ];
 
 // CPR thresholds calibrated for Libya COD market (USD).
-// These are opinionated benchmarks — adjust as real data accumulates.
 export const CPR_THRESHOLDS = {
   excellent: 1.0,  // < $1.00 → ممتاز
   good: 1.80,      // $1.00 – $1.79 → جيد
   average: 2.50,   // $1.80 – $2.49 → متوسط
-  // ≥ $2.50 → مرتفع جداً → أوقفه
+  // ≥ $2.50 → مرتفع جداً
 };
 
 export type CprRating = "excellent" | "good" | "average" | "poor";
@@ -37,8 +36,8 @@ export interface PlacementStat {
   spend: number;
   costPerResult: number | null;
   impressions: number;
-  flagged: boolean;       // known junk-prone placement
-  cprRating: CprRating;  // quality label for this placement
+  flagged: boolean;
+  cprRating: CprRating;
 }
 
 export interface AdsFacts {
@@ -46,13 +45,21 @@ export interface AdsFacts {
   totalSpend: number;
   blendedCostPerResult: number | null;
   blendedCprRating: CprRating;
-  estimatedWastedSpend: number;   // spend on flagged/junk placements
+  estimatedWastedSpend: number;
   reportStart: string | null;
   reportEnd: string | null;
   byPlacement: PlacementStat[];
-  bestPlacement: PlacementStat | null;   // lowest CPR with results
+  bestPlacement: PlacementStat | null;
   worstCostPerResult: PlacementStat | null;
   flaggedPlacements: PlacementStat[];
+  // Computed after joining with MDM order data (set in index.ts)
+  costPerConfirmedOrder: number | null;
+  dataMatchingWarning: {
+    hasWarning: boolean;
+    fbResults: number;
+    mdmOrders: number;
+    diff: number;
+  } | null;
 }
 
 function num(v: unknown): number {
@@ -95,7 +102,9 @@ export function buildAdsFacts(rows: RawRow[]): AdsFacts {
   const totalSpend = +byPlacement.reduce((s, p) => s + p.spend, 0).toFixed(2);
   const blendedCpr = totalResults > 0 ? +(totalSpend / totalResults).toFixed(2) : null;
 
-  const withResults = byPlacement.filter((p) => p.costPerResult !== null && p.results > 0);
+  const withResults = byPlacement.filter(
+    (p) => p.costPerResult !== null && p.results > 0
+  );
 
   const worst =
     withResults.length > 0
@@ -128,5 +137,8 @@ export function buildAdsFacts(rows: RawRow[]): AdsFacts {
     bestPlacement: best,
     worstCostPerResult: worst,
     flaggedPlacements,
+    // These are computed in index.ts after joining with seller data
+    costPerConfirmedOrder: null,
+    dataMatchingWarning: null,
   };
 }
